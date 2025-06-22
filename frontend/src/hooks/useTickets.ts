@@ -1,16 +1,16 @@
 import { useState, useEffect } from 'react';
 import { Ticket } from '../types';
 import { ticketAPI } from '../services/api';
-import { useAuth } from '../contexts/AuthContext';
+import { useWallet } from '../contexts/WalletContext';
 
 export const useTickets = () => {
-  const { user } = useAuth();
+  const { isConnected } = useWallet();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchTickets = async () => {
-    if (!user) {
+    if (!isConnected) {
       setTickets([]);
       setLoading(false);
       return;
@@ -19,7 +19,7 @@ export const useTickets = () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await ticketAPI.getUserTickets(user.id);
+      const data = await ticketAPI.getUserTickets();
       setTickets(data);
     } catch (err) {
       setError('Failed to fetch tickets');
@@ -31,7 +31,7 @@ export const useTickets = () => {
 
   useEffect(() => {
     fetchTickets();
-  }, [user]);
+  }, [isConnected]);
 
   return {
     tickets,

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
 import { User } from '../types';
 import { authAPI } from '../services/api';
+import { useWallet } from './WalletContext';
 
 interface AuthState {
   user: User | null;
@@ -75,6 +76,26 @@ interface AuthProviderProps {
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [state, dispatch] = useReducer(authReducer, initialState);
+  const { isConnected, publicKey, isAdmin } = useWallet();
+
+  // Auto-create user when wallet is connected
+  useEffect(() => {
+    if (isConnected && publicKey && !state.user) {
+      const user: User = {
+        id: publicKey,
+        email: `${publicKey.slice(0, 8)}...${publicKey.slice(-8)}`,
+        publicKey: publicKey,
+        isAdmin: isAdmin || false,
+        createdAt: new Date().toISOString()
+      };
+      dispatch({ type: 'LOGIN_SUCCESS', payload: user });
+      localStorage.setItem('user', JSON.stringify(user));
+    } else if (!isConnected && state.user) {
+      // Clear user when wallet is disconnected
+      dispatch({ type: 'LOGOUT' });
+      localStorage.removeItem('user');
+    }
+  }, [isConnected, publicKey, isAdmin, state.user]);
 
   const login = async () => {
     try {
@@ -88,12 +109,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const register = async (email: string) => {
+  const register = async (_email: string) => {
+    // This function seems to be unused, but keeping it for now.
+    // It should be removed if not needed.
+    console.warn('Register function is not fully implemented against a backend.');
     try {
       dispatch({ type: 'LOGIN_START' });
-      const user = await authAPI.registerWithPasskey(email);
-      dispatch({ type: 'LOGIN_SUCCESS', payload: user });
-      localStorage.setItem('user', JSON.stringify(user));
+      // const user = await authAPI.registerWithPasskey(email);
+      // dispatch({ type: 'LOGIN_SUCCESS', payload: user });
+      // localStorage.setItem('user', JSON.stringify(user));
     } catch (error) {
       dispatch({ type: 'LOGIN_FAILURE' });
       throw error;
@@ -101,6 +125,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const logout = () => {
+    authAPI.logout();
     dispatch({ type: 'LOGOUT' });
     localStorage.removeItem('user');
   };

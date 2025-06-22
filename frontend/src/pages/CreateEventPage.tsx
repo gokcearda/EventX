@@ -3,19 +3,31 @@ import { useNavigate } from 'react-router-dom';
 import { EventForm } from '../components/events/EventForm';
 import { eventAPI } from '../services/api';
 import { CreateEventParams } from '../types';
+import { useWallet } from '../contexts/WalletContext';
+import { AlertCircle, Wallet } from 'lucide-react';
+import { Button } from '../components/ui/Button';
 
 export const CreateEventPage: React.FC = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = React.useState(false);
+  const { isConnected, connectWallet, isConnecting } = useWallet();
 
   const handleCreateEvent = async (eventData: CreateEventParams) => {
+    if (!isConnected) {
+      alert('Please connect your wallet first.');
+      return;
+    }
+
     setLoading(true);
     try {
-      await eventAPI.createEvent(eventData);
+      console.log('Creating event with data:', eventData);
+      const result = await eventAPI.createEvent(eventData);
+      console.log('Event created successfully:', result);
       navigate('/events');
     } catch (error) {
       console.error('Failed to create event:', error);
-      throw error;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      alert(`Failed to create event: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
@@ -32,8 +44,32 @@ export const CreateEventPage: React.FC = () => {
         </p>
       </div>
 
+      {/* Wallet Connection Warning */}
+      {!isConnected && (
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+            <div className="flex items-center mb-4">
+              <AlertCircle className="w-6 h-6 text-yellow-600 mr-3" />
+              <h3 className="text-lg font-semibold text-yellow-800">
+                Wallet Connection Required
+              </h3>
+            </div>
+            <p className="text-yellow-700 mb-4">
+              You need to connect your Stellar wallet to create events.
+            </p>
+            <Button
+              onClick={connectWallet}
+              disabled={isConnecting}
+              icon={Wallet}
+            >
+              {isConnecting ? 'Connecting...' : 'Connect Wallet'}
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-4xl mx-auto">
-        <EventForm onSubmit={handleCreateEvent} loading={loading} />
+        <EventForm onSubmit={handleCreateEvent} loading={loading} disabled={!isConnected} />
       </div>
     </div>
   );

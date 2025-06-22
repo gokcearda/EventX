@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
 import { WalletConnection } from '../types';
-import { blockchainService } from '../services/blockchain';
+import blockchainService from '../services/blockchain';
 
 interface WalletState extends WalletConnection {
   isConnecting: boolean;
@@ -46,6 +46,7 @@ const walletReducer = (state: WalletState, action: WalletAction): WalletState =>
 
 interface WalletContextType extends WalletState {
   connectWallet: () => Promise<void>;
+  connectWalletManually: (publicKey: string) => Promise<void>;
   disconnectWallet: () => Promise<void>;
   refreshBalance: () => Promise<void>;
 }
@@ -67,20 +68,67 @@ interface WalletProviderProps {
 export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
   const [state, dispatch] = useReducer(walletReducer, initialState);
 
+  // Load wallet connection from localStorage on mount
+  useEffect(() => {
+    const savedConnection = localStorage.getItem('walletConnection');
+    if (savedConnection) {
+      try {
+        const connection = JSON.parse(savedConnection);
+        dispatch({ type: 'CONNECT_SUCCESS', payload: connection });
+      } catch (error) {
+        console.error('Failed to load saved wallet connection:', error);
+        localStorage.removeItem('walletConnection');
+      }
+    }
+  }, []);
+
   const connectWallet = async () => {
     try {
       dispatch({ type: 'CONNECT_START' });
+      
+      // Connect directly with blockchain service
       const connection = await blockchainService.connectWallet();
+      
+      // Save to localStorage
+      localStorage.setItem('walletConnection', JSON.stringify(connection));
+      
       dispatch({ type: 'CONNECT_SUCCESS', payload: connection });
     } catch (error) {
+      console.error('Failed to connect wallet:', error);
+      dispatch({ type: 'CONNECT_FAILURE' });
+      throw error;
+    }
+  };
+
+  const connectWalletManually = async (publicKey: string) => {
+    try {
+      dispatch({ type: 'CONNECT_START' });
+      
+      // Use blockchain service to connect manually
+      const connection = await blockchainService.connectWalletManually(publicKey);
+      
+      // Save to localStorage
+      localStorage.setItem('walletConnection', JSON.stringify(connection));
+      
+      dispatch({ type: 'CONNECT_SUCCESS', payload: connection });
+    } catch (error) {
+      console.error('Failed to connect wallet manually:', error);
       dispatch({ type: 'CONNECT_FAILURE' });
       throw error;
     }
   };
 
   const disconnectWallet = async () => {
-    await blockchainService.disconnectWallet();
-    dispatch({ type: 'DISCONNECT' });
+    try {
+      await blockchainService.disconnectWallet();
+      
+      // Remove from localStorage
+      localStorage.removeItem('walletConnection');
+      
+      dispatch({ type: 'DISCONNECT' });
+    } catch (error) {
+      console.error('Failed to disconnect wallet:', error);
+    }
   };
 
   const refreshBalance = async () => {
@@ -94,17 +142,10 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     }
   };
 
-  useEffect(() => {
-    // Check for existing wallet connection on app load
-    const connection = blockchainService.getWalletConnection();
-    if (connection.isConnected) {
-      dispatch({ type: 'CONNECT_SUCCESS', payload: connection });
-    }
-  }, []);
-
   const value: WalletContextType = {
     ...state,
     connectWallet,
+    connectWalletManually,
     disconnectWallet,
     refreshBalance,
   };

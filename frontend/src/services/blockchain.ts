@@ -1,9 +1,46 @@
-// Mock blockchain service for Stellar/Soroban integration
-// This will be replaced with actual Stellar SDK implementation
-
-import { isConnected, requestAccess, getAddress, getNetwork, getNetworkDetails } from '@stellar/freighter-api';
+// Blockchain service for Stellar/Soroban integration
+import { 
+  isConnected,
+  isAllowed,
+  setAllowed,
+  requestAccess,
+  getAddress,
+  getNetwork
+} from '@stellar/freighter-api';
 import { STELLAR_CONFIG } from '../utils/constants';
-import { WalletConnection, PurchaseTicketParams } from '../types';
+import { WalletConnection, PurchaseTicketParams, Event, Ticket } from '../types';
+
+// Contract ABI types
+interface CreateEventParams {
+  title: string;
+  description: string;
+  venue: string;
+  date: string;
+  time: string;
+  ticketPrice: number;
+  totalTickets: number;
+  imageUrl: string;
+  category: string;
+}
+
+interface TransferTicketParams {
+  ticketId: string;
+  toAddress: string;
+}
+
+// Admin public keys - these addresses will have admin privileges
+const ADMIN_PUBLIC_KEYS = [
+  'GCKUE5RWKYTNJNMOJ64YR3HMIOBAEF4PIY4HH6RRNSHSOS325LXWAGAJ', // Test admin key
+  'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', // Another test admin key
+  'GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB', // Test admin key 3
+  'GCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC', // Test admin key 4
+  'GAAFAO6UOHGVD6FWVARCM5XB3MDAK4CX75K6VWT6UGTERALYXO3EZCLU', // Current user's key
+];
+
+// Check if a public key has admin privileges
+const isAdminPublicKey = (publicKey: string): boolean => {
+  return ADMIN_PUBLIC_KEYS.includes(publicKey);
+};
 
 class BlockchainService {
   private walletConnection: WalletConnection = {
@@ -12,117 +49,213 @@ class BlockchainService {
     balance: 0
   };
 
-  // Check if Freighter is installed
+  private currentNetwork: string = STELLAR_CONFIG.CURRENT_NETWORK;
+  
+  // Mock storage for purchased tickets
+  private mockTickets: Map<string, Ticket[]> = new Map();
+  
+  // Mock storage for created events
+  private mockEvents: Event[] = [
+    {
+      id: '1',
+      title: 'Blockchain Conference 2024',
+      description: 'The biggest blockchain event of the year',
+      venue: 'Istanbul, Turkey',
+      date: '2024-12-15',
+      time: '09:00',
+      ticketPrice: 50.0,
+      totalTickets: 500,
+      availableTickets: 350,
+      organizerId: 'organizer_1',
+      imageUrl: 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=400',
+      category: 'Technology',
+      status: 'active',
+      createdAt: '2024-01-01T00:00:00Z'
+    },
+    {
+      id: '2',
+      title: 'Web3 Developer Meetup',
+      description: 'Connect with fellow developers',
+      venue: 'Ankara, Turkey',
+      date: '2024-11-20',
+      time: '18:00',
+      ticketPrice: 25.0,
+      totalTickets: 100,
+      availableTickets: 25,
+      organizerId: 'organizer_2',
+      imageUrl: 'https://images.unsplash.com/photo-1515187029135-18ee286d815b?w=400',
+      category: 'Technology',
+      status: 'active',
+      createdAt: '2024-01-01T00:00:00Z'
+    }
+  ];
+
+  constructor() {
+    console.log('BlockchainService initialized');
+  }
+
+  // Get current network configuration
+  private getCurrentNetworkConfig() {
+    return STELLAR_CONFIG.NETWORKS[this.currentNetwork as keyof typeof STELLAR_CONFIG.NETWORKS];
+  }
+
+  // Set network
+  setNetwork(network: string) {
+    if (STELLAR_CONFIG.NETWORKS[network as keyof typeof STELLAR_CONFIG.NETWORKS]) {
+      this.currentNetwork = network;
+      console.log(`Network changed to: ${network}`);
+    } else {
+      console.error(`Invalid network: ${network}`);
+    }
+  }
+
+  // Get available networks
+  getAvailableNetworks() {
+    return Object.keys(STELLAR_CONFIG.NETWORKS).map(key => ({
+      key,
+      ...STELLAR_CONFIG.NETWORKS[key as keyof typeof STELLAR_CONFIG.NETWORKS]
+    }));
+  }
+
+  // Check if Freighter is installed and available
   async isFreighterInstalled(): Promise<boolean> {
     try {
-      console.log('Checking if Freighter is installed...');
-      
-      // Check if window.freighterApi exists
-      if (typeof window !== 'undefined' && (window as { freighterApi?: unknown }).freighterApi) {
-        console.log('Freighter API found in window object');
-        return true;
-      }
-      
-      // Try to access Freighter API
-      await getNetwork();
-      console.log('Freighter API accessible');
-      return true;
+      const result = await isConnected();
+      return result.isConnected;
     } catch (error) {
-      console.log('Freighter not installed or not accessible:', error);
+      console.error('Error checking if Freighter is installed:', error);
       return false;
     }
   }
 
-  // Connect to Freighter wallet
+  // Check if app is allowed to access Freighter
+  async isAppAllowed(): Promise<boolean> {
+    try {
+      const result = await isAllowed();
+      return result.isAllowed;
+    } catch (error) {
+      console.error('Error checking if app is allowed:', error);
+      return false;
+    }
+  }
+
+  // Request app to be allowed by Freighter
+  async requestAppAccess(): Promise<boolean> {
+    try {
+      const result = await setAllowed();
+      return result.isAllowed;
+    } catch (error) {
+      console.error('Error requesting app access:', error);
+      return false;
+    }
+  }
+
+  // Connect wallet using Freighter (automatic)
   async connectWallet(): Promise<WalletConnection> {
     try {
-      console.log('Starting wallet connection...');
-      
+      console.log('Connecting wallet with Freighter...');
+
       // Check if Freighter is installed
-      const isInstalled = await this.isFreighterInstalled();
-      console.log('Freighter installed:', isInstalled);
-      
-      if (!isInstalled) {
-        // If Freighter is not installed, offer manual input
-        const manualPublicKey = prompt('Freighter yüklü değil. Lütfen public key\'inizi manuel olarak girin (GCKUE5RWKYTNJNMOJ64YR3HMIOBAEF4PIY4HH6RRNSHSOS325LXWAGAJ):');
-        
-        if (manualPublicKey && manualPublicKey.trim() !== '') {
-          const publicKey = manualPublicKey.trim();
-          console.log('Using manual public key:', publicKey);
-          
-          // Get account balance
-          const balance = await this.getAccountBalance(publicKey);
-          
-          this.walletConnection = {
-            isConnected: true,
-            publicKey,
-            balance
-          };
-          
-          return this.walletConnection;
-        } else {
-          throw new Error('Public key gerekli. Lütfen geçerli bir Stellar public key girin.');
+      const freighterInstalled = await this.isFreighterInstalled();
+      if (!freighterInstalled) {
+        throw new Error('Freighter wallet is not installed. Please install Freighter extension to connect your wallet.');
+      }
+
+      // Check if app is allowed, if not request access
+      const appAllowed = await this.isAppAllowed();
+      if (!appAllowed) {
+        console.log('App not allowed, requesting access...');
+        const accessGranted = await this.requestAppAccess();
+        if (!accessGranted) {
+          throw new Error('App access was denied by user.');
         }
       }
 
-      // Try to get public key from Freighter
-      let publicKey: string | undefined;
-      
-      try {
-        // Check if already connected
-        const connected = await isConnected();
-        console.log('Already connected:', connected);
-        
-        if (!connected) {
-          console.log('Requesting access to Freighter...');
-          await requestAccess();
-          console.log('Access granted');
-        }
-
-        // Try to get public key with delay
-        console.log('Getting public key from Freighter...');
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        const addressResult = await getAddress();
-        console.log('Address result:', addressResult);
-        
-        if (addressResult && addressResult.address && addressResult.address.trim() !== '') {
-          publicKey = addressResult.address.trim();
-          console.log('Public key from Freighter:', publicKey);
-        }
-      } catch (freighterError) {
-        console.error('Freighter API error:', freighterError);
+      // Request access to get public key
+      const accessResult = await requestAccess();
+      if (accessResult.error) {
+        throw new Error(`Failed to get public key: ${accessResult.error}`);
       }
 
-      // If Freighter didn't work, offer manual input
-      if (!publicKey) {
-        const manualPublicKey = prompt('Freighter API çalışmıyor. Lütfen public key\'inizi manuel olarak girin (GCKUE5RWKYTNJNMOJ64YR3HMIOBAEF4PIY4HH6RRNSHSOS325LXWAGAJ):');
-        
-        if (manualPublicKey && manualPublicKey.trim() !== '') {
-          publicKey = manualPublicKey.trim();
-          console.log('Using manual public key:', publicKey);
-        } else {
-          throw new Error('Public key gerekli. Lütfen geçerli bir Stellar public key girin.');
-        }
+      const publicKey = accessResult.address;
+      console.log('Public key obtained:', publicKey);
+
+      // Get network information
+      const networkResult = await getNetwork();
+      if (networkResult.error) {
+        console.warn('Could not get network info:', networkResult.error);
+      } else {
+        console.log('Network:', networkResult.network);
+        console.log('Network passphrase:', networkResult.networkPassphrase);
       }
 
       // Get account balance
-      console.log('Getting account balance...');
       const balance = await this.getAccountBalance(publicKey);
-      console.log('Balance:', balance);
+      console.log('Account balance:', balance);
 
-      // Update wallet connection
-      this.walletConnection = {
+      // Check admin privileges
+      const isAdmin = isAdminPublicKey(publicKey);
+      console.log('Admin privileges:', isAdmin);
+
+      // Create wallet connection object
+      const connection: WalletConnection = {
         isConnected: true,
-        publicKey,
-        balance
+        publicKey: publicKey,
+        balance: balance,
+        isManual: false,
+        isAdmin: isAdmin
       };
 
-      console.log('Wallet connection successful:', this.walletConnection);
-      return this.walletConnection;
+      this.walletConnection = connection;
+      console.log('Wallet connected successfully:', connection);
+
+      return connection;
     } catch (error) {
       console.error('Failed to connect wallet:', error);
       throw error;
     }
+  }
+
+  // Connect wallet manually with public key
+  async connectWalletManually(publicKey: string): Promise<WalletConnection> {
+    try {
+      console.log('Manual public key:', publicKey);
+
+      // Validate public key format (basic check)
+      if (!publicKey.startsWith('G') || publicKey.length !== 56) {
+        throw new Error('Invalid public key format. Public key should start with G and be 56 characters long.');
+      }
+
+      // Get account balance
+      const balance = await this.getAccountBalance(publicKey);
+      console.log('Account balance:', balance);
+
+      // Check admin privileges
+      const isAdmin = isAdminPublicKey(publicKey);
+      console.log('Admin privileges:', isAdmin);
+
+      // Create wallet connection object
+      const connection: WalletConnection = {
+        isConnected: true,
+        publicKey: publicKey,
+        balance: balance,
+        isManual: true,
+        isAdmin: isAdmin
+      };
+
+      this.walletConnection = connection;
+      console.log('Manual wallet connected successfully:', connection);
+
+      return connection;
+    } catch (error) {
+      console.error('Failed to connect wallet manually:', error);
+      throw error;
+    }
+  }
+
+  // Get current wallet connection
+  getWalletConnection(): WalletConnection {
+    return this.walletConnection;
   }
 
   // Disconnect wallet
@@ -132,132 +265,279 @@ class BlockchainService {
       publicKey: null,
       balance: 0
     };
+    console.log('Wallet disconnected');
   }
 
-  // Get wallet connection status
-  getWalletConnection(): WalletConnection {
-    return this.walletConnection;
-  }
-
-  // Get account balance from Horizon Testnet
+  // Get account balance from Stellar Horizon API
   async getAccountBalance(publicKey: string): Promise<number> {
     try {
-      const response = await fetch(`${STELLAR_CONFIG.HORIZON_URL}/accounts/${publicKey}`);
+      const response = await fetch(`${this.getCurrentNetworkConfig().horizonUrl}/accounts/${publicKey}`);
       
       if (!response.ok) {
         if (response.status === 404) {
-          // Account doesn't exist yet, return 0 balance
+          console.log('Account not found on this network');
           return 0;
         }
-        throw new Error(`Failed to fetch account balance: ${response.statusText}`);
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
-
-      const accountData = await response.json();
+      
+      const account = await response.json();
       
       // Find XLM balance
-      const xlmBalance = accountData.balances.find((balance: { asset_type: string; balance: string }) => 
+      const xlmBalance = account.balances.find((balance: { asset_type: string; balance: string }) => 
         balance.asset_type === 'native'
       );
-
+      
       return xlmBalance ? parseFloat(xlmBalance.balance) : 0;
     } catch (error) {
-      console.error('Failed to get account balance:', error);
+      console.error('Error getting account balance:', error);
       return 0;
     }
   }
 
-  // Refresh wallet connection and balance
+  // Refresh wallet connection
   async refreshWalletConnection(): Promise<WalletConnection> {
-    if (this.walletConnection.isConnected && this.walletConnection.publicKey) {
+    if (this.walletConnection.publicKey) {
       const balance = await this.getAccountBalance(this.walletConnection.publicKey);
       this.walletConnection.balance = balance;
     }
     return this.walletConnection;
   }
 
-  // Purchase tickets via smart contract
-  async purchaseTicketsOnChain(params: PurchaseTicketParams): Promise<{
-    success: boolean;
-    transactionHash?: string;
-    tokenIds?: string[];
-  }> {
+  // Get all events from the smart contract
+  async getEvents(): Promise<Event[]> {
+    console.log('Getting events from smart contract...');
+    
     try {
-      if (!this.walletConnection.isConnected || !this.walletConnection.publicKey) {
-        throw new Error('Wallet not connected');
-      }
+      // For now, return mock data since contract integration needs proper setup
+      // In a real implementation, this would call the smart contract
+      return this.mockEvents;
+    } catch (error) {
+      console.error('Error getting events:', error);
+      throw new Error('Failed to get events from blockchain');
+    }
+  }
 
-      // Check if user has enough balance
-      if (this.walletConnection.balance < params.totalPrice) {
-        throw new Error('Insufficient balance');
-      }
+  // Create a new event on the blockchain
+  async createEvent(eventData: CreateEventParams): Promise<string> {
+    console.log('Creating event on blockchain:', eventData);
+    console.log('Wallet connection:', this.walletConnection);
+    console.log('Is admin?', this.walletConnection.isAdmin);
+    
+    if (!this.walletConnection.isConnected) {
+      throw new Error('Wallet not connected');
+    }
 
-      // TODO: Implement actual Soroban contract call here
+    if (!this.walletConnection.isAdmin) {
+      throw new Error('Admin privileges required to create events');
+    }
+
+    try {
+      // In a real implementation, this would:
+      // 1. Create a transaction to call the smart contract
+      // 2. Sign the transaction with Freighter
+      // 3. Submit the transaction to the network
+      
       // For now, simulate the transaction
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const eventId = `event_${Date.now()}`;
+      console.log(`Event created with ID: ${eventId}`);
       
-      const tokenIds = Array.from({ length: params.quantity }, (_, i) => 
-        `TOKEN_${Date.now()}_${i}`
-      );
-
-      // Update balance after purchase
-      this.walletConnection.balance -= params.totalPrice;
-
-      return {
-        success: true,
-        transactionHash: '0x' + Math.random().toString(16).substring(2),
-        tokenIds
+      // Create new event object
+      const newEvent: Event = {
+        id: eventId,
+        title: eventData.title,
+        description: eventData.description,
+        venue: eventData.venue,
+        date: eventData.date,
+        time: eventData.time,
+        ticketPrice: eventData.ticketPrice,
+        totalTickets: eventData.totalTickets,
+        availableTickets: eventData.totalTickets,
+        organizerId: this.walletConnection.publicKey || '',
+        imageUrl: eventData.imageUrl,
+        category: eventData.category,
+        status: 'active',
+        createdAt: new Date().toISOString()
       };
+      
+      // Add to mock storage
+      this.mockEvents.push(newEvent);
+      console.log('Event added to mock storage:', newEvent);
+      
+      return eventId;
     } catch (error) {
-      console.error('Failed to purchase tickets:', error);
-      throw error;
+      console.error('Error creating event:', error);
+      throw new Error('Failed to create event on blockchain');
     }
   }
 
-  // Transfer NFT ticket to another address
-  async transferTicket(): Promise<{
-    success: boolean;
-    transactionHash?: string;
-  }> {
-    try {
-      if (!this.walletConnection.isConnected || !this.walletConnection.publicKey) {
-        throw new Error('Wallet not connected');
-      }
+  // Purchase a ticket for an event
+  async purchaseTicket(params: PurchaseTicketParams): Promise<string> {
+    console.log('Purchasing ticket:', params);
+    
+    if (!this.walletConnection.isConnected) {
+      throw new Error('Wallet not connected');
+    }
 
-      // TODO: Implement actual Soroban contract call here
-      await new Promise(resolve => setTimeout(resolve, 1500));
+    try {
+      // In a real implementation, this would:
+      // 1. Create a transaction to call the smart contract
+      // 2. Include payment for the ticket
+      // 3. Sign the transaction with Freighter
+      // 4. Submit the transaction to the network
       
-      return {
-        success: true,
-        transactionHash: '0x' + Math.random().toString(16).substring(2)
+      // For now, simulate the transaction
+      const ticketId = `ticket_${Date.now()}`;
+      console.log(`Ticket purchased with ID: ${ticketId}`);
+      
+      // Get event information
+      const events = await this.getEvents();
+      const event = events.find(e => e.id === params.eventId);
+      
+      // Store the purchased ticket in mock storage
+      const newTicket: Ticket = {
+        id: ticketId,
+        eventId: params.eventId,
+        ownerId: this.walletConnection.publicKey || '',
+        tokenId: ticketId,
+        qrCode: `${ticketId}_qr_code`,
+        isUsed: false,
+        purchaseDate: new Date().toISOString(),
+        price: params.totalPrice,
+        isForSale: false,
+        event: event
       };
+      
+      // Add to mock storage
+      const userKey = this.walletConnection.publicKey || '';
+      const existingTickets = this.mockTickets.get(userKey) || [];
+      existingTickets.push(newTicket);
+      this.mockTickets.set(userKey, existingTickets);
+      
+      return ticketId;
     } catch (error) {
-      console.error('Failed to transfer ticket:', error);
-      throw error;
+      console.error('Error purchasing ticket:', error);
+      throw new Error('Failed to purchase ticket');
     }
   }
 
-  // Cancel event and process refunds
-  async cancelEventAndRefund(): Promise<{
-    success: boolean;
-    transactionHash?: string;
-    refundsProcessed?: number;
-  }> {
-    try {
-      if (!this.walletConnection.isConnected || !this.walletConnection.publicKey) {
-        throw new Error('Wallet not connected');
-      }
+  // Transfer a ticket to another address
+  async transferTicket(params: TransferTicketParams): Promise<void> {
+    console.log('Transferring ticket:', params);
+    
+    if (!this.walletConnection.isConnected) {
+      throw new Error('Wallet not connected');
+    }
 
-      // TODO: Implement actual Soroban contract call here
-      await new Promise(resolve => setTimeout(resolve, 3000));
+    try {
+      // In a real implementation, this would:
+      // 1. Create a transaction to call the smart contract
+      // 2. Sign the transaction with Freighter
+      // 3. Submit the transaction to the network
       
-      return {
-        success: true,
-        transactionHash: '0x' + Math.random().toString(16).substring(2),
-        refundsProcessed: 158
-      };
+      console.log(`Ticket ${params.ticketId} transferred to ${params.toAddress}`);
     } catch (error) {
-      console.error('Failed to cancel event:', error);
-      throw error;
+      console.error('Error transferring ticket:', error);
+      throw new Error('Failed to transfer ticket');
+    }
+  }
+
+  // Get tickets owned by the connected wallet
+  async getMyTickets(): Promise<Ticket[]> {
+    console.log('Getting my tickets...');
+    
+    if (!this.walletConnection.isConnected) {
+      throw new Error('Wallet not connected');
+    }
+
+    try {
+      // Get events to attach to tickets
+      const events = await this.getEvents();
+      
+      // Get existing mock tickets (static data)
+      const staticMockTickets: Ticket[] = [
+        {
+          id: 'ticket_1',
+          eventId: '1',
+          ownerId: this.walletConnection.publicKey || '',
+          tokenId: 'token_1',
+          qrCode: 'ticket_1_qr_code_data',
+          isUsed: false,
+          purchaseDate: '2024-01-01T00:00:00Z',
+          price: 50.0,
+          isForSale: false,
+          event: events.find(e => e.id === '1')
+        },
+        {
+          id: 'ticket_2',
+          eventId: '2',
+          ownerId: this.walletConnection.publicKey || '',
+          tokenId: 'token_2',
+          qrCode: 'ticket_2_qr_code_data',
+          isUsed: true,
+          purchaseDate: '2024-01-01T00:00:00Z',
+          price: 25.0,
+          isForSale: false,
+          event: events.find(e => e.id === '2')
+        }
+      ];
+      
+      // Get newly purchased tickets from mock storage
+      const userKey = this.walletConnection.publicKey || '';
+      const purchasedTickets = this.mockTickets.get(userKey) || [];
+      
+      // Add event information to purchased tickets
+      const purchasedTicketsWithEvents = purchasedTickets.map(ticket => ({
+        ...ticket,
+        event: events.find(e => e.id === ticket.eventId)
+      }));
+      
+      // Combine static and purchased tickets
+      const allTickets = [...staticMockTickets, ...purchasedTicketsWithEvents];
+      
+      console.log(`Found ${allTickets.length} tickets (${staticMockTickets.length} static + ${purchasedTickets.length} purchased)`);
+      
+      return allTickets;
+    } catch (error) {
+      console.error('Error getting tickets:', error);
+      throw new Error('Failed to get tickets');
+    }
+  }
+
+  // Use a ticket (mark as used)
+  async useTicket(ticketId: string): Promise<void> {
+    console.log('Using ticket:', ticketId);
+    
+    if (!this.walletConnection.isConnected) {
+      throw new Error('Wallet not connected');
+    }
+
+    try {
+      // In a real implementation, this would:
+      // 1. Create a transaction to call the smart contract
+      // 2. Sign the transaction with Freighter
+      // 3. Submit the transaction to the network
+      
+      console.log(`Ticket ${ticketId} marked as used`);
+    } catch (error) {
+      console.error('Error using ticket:', error);
+      throw new Error('Failed to use ticket');
+    }
+  }
+
+  // Check if a ticket is valid
+  async isTicketValid(ticketId: string): Promise<boolean> {
+    console.log('Checking ticket validity:', ticketId);
+    
+    try {
+      // In a real implementation, this would call the smart contract
+      // to verify the ticket's validity
+      
+      // For now, return true for mock tickets
+      return ticketId.startsWith('ticket_');
+    } catch (error) {
+      console.error('Error checking ticket validity:', error);
+      return false;
     }
   }
 
@@ -272,85 +552,39 @@ class BlockchainService {
     accounts?: string[];
   }> {
     try {
-      console.log('Testing Freighter configuration...');
-      
-      // Check if installed
       const isInstalled = await this.isFreighterInstalled();
-      console.log('Freighter installed:', isInstalled);
-      
-      if (!isInstalled) {
-        return {
-          isInstalled: false,
-          isConnected: false,
-          hasAccount: false,
-          network: 'unknown',
-          error: 'Freighter is not installed'
-        };
-      }
-
-      // Check connection
-      const connected = await isConnected();
-      console.log('Freighter connected:', connected);
-      
-      if (!connected) {
-        return {
-          isInstalled: true,
-          isConnected: false,
-          hasAccount: false,
-          network: 'unknown',
-          error: 'Freighter is not connected'
-        };
-      }
-
-      // Get network
-      const networkDetails = await getNetworkDetails();
-      console.log('Network details:', networkDetails);
-      
-      // Try to get public key
+      let isConnected = false;
+      let hasAccount = false;
+      let network = 'unknown';
       let publicKey: string | undefined;
       let accounts: string[] = [];
-      
-      try {
-        const addressResult = await getAddress();
-        publicKey = addressResult?.address;
-        console.log('Public key:', publicKey);
-        
-        // Check if address is empty
-        if (!publicKey || publicKey.trim() === '') {
-          console.log('Empty address received from Freighter');
-          publicKey = undefined;
-        }
-        
-        // Try to get all accounts (if possible)
+
+      if (isInstalled) {
         try {
-          // This might not work with all Freighter versions, but worth trying
-          if (typeof window !== 'undefined' && (window as { freighterApi?: { getAccounts?: () => Promise<Array<{ publicKey?: string; address?: string }>> } }).freighterApi) {
-            const freighterApi = (window as { freighterApi?: { getAccounts?: () => Promise<Array<{ publicKey?: string; address?: string }>> } }).freighterApi;
-            if (freighterApi?.getAccounts) {
-              const allAccounts = await freighterApi.getAccounts();
-              accounts = allAccounts.map((acc) => acc.publicKey || acc.address || 'Unknown');
-              console.log('All accounts:', accounts);
-            }
+          const addressResult = await getAddress();
+          if (addressResult && addressResult.address) {
+            publicKey = addressResult.address;
+            hasAccount = true;
+            accounts = [publicKey];
+            isConnected = true;
           }
-        } catch (accountsError) {
-          console.log('Could not get all accounts:', accountsError);
+          
+          const networkResult = await getNetwork();
+          network = networkResult.network || 'unknown';
+        } catch (error) {
+          console.error('Freighter test error:', error);
         }
-        
-      } catch (error) {
-        console.error('Error getting public key:', error);
       }
 
       return {
-        isInstalled: true,
-        isConnected: true,
-        hasAccount: !!publicKey,
-        network: networkDetails.network,
+        isInstalled,
+        isConnected,
+        hasAccount,
+        network,
         publicKey,
-        accounts: accounts.length > 0 ? accounts : undefined,
-        error: !publicKey ? 'No account found in Freighter' : undefined
+        accounts
       };
     } catch (error) {
-      console.error('Error testing Freighter configuration:', error);
       return {
         isInstalled: false,
         isConnected: false,
@@ -362,4 +596,4 @@ class BlockchainService {
   }
 }
 
-export const blockchainService = new BlockchainService();
+export default new BlockchainService();

@@ -5,7 +5,7 @@ import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
 import { useEvents } from '../hooks/useEvents';
 import { eventAPI } from '../services/api';
-import { blockchainService } from '../services/blockchain';
+import blockchainService from '../services/blockchain';
 import { Event } from '../types';
 import { formatPrice, formatDate, getEventStatusColor } from '../utils/helpers';
 

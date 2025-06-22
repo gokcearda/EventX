@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
-import { Ticket, CreditCard, Wallet, AlertCircle } from 'lucide-react';
+import { CreditCard, Wallet, AlertCircle } from 'lucide-react';
 import { Modal } from '../components/ui/Modal';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Event } from '../types';
 import { useWallet } from '../contexts/WalletContext';
 import { ticketAPI } from '../services/api';
-import { blockchainService } from '../services/blockchain';
 import { formatPrice } from '../utils/helpers';
 
 interface PurchaseTicketModalProps {
@@ -51,18 +50,7 @@ export const PurchaseTicketModal: React.FC<PurchaseTicketModalProps> = ({
       setLoading(true);
       setError('');
 
-      // First, process the blockchain transaction
-      const blockchainResult = await blockchainService.purchaseTicketsOnChain({
-        eventId: event.id,
-        quantity,
-        totalPrice
-      });
-
-      if (!blockchainResult.success) {
-        throw new Error('Blockchain transaction failed');
-      }
-
-      // Then, record the purchase in our API
+      // Purchase tickets through the API (which handles blockchain interaction)
       await ticketAPI.purchaseTickets({
         eventId: event.id,
         quantity,
@@ -70,8 +58,10 @@ export const PurchaseTicketModal: React.FC<PurchaseTicketModalProps> = ({
       });
 
       onSuccess();
+      handleClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Purchase failed');
+      const errorMessage = err instanceof Error ? err.message : 'Purchase failed';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }

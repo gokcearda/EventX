@@ -1,33 +1,82 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Ticket, Plus, User, LogOut, Wallet, Scan } from 'lucide-react';
+import { Ticket, User, LogOut, Wallet } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { useAuth } from '../../contexts/AuthContext';
 import { useWallet } from '../../contexts/WalletContext';
 import { formatPrice, truncateAddress } from '../../utils/helpers';
+import { STELLAR_CONFIG } from '../../utils/constants';
+import blockchainService from '../../services/blockchain';
 
 export const Header: React.FC = () => {
   const location = useLocation();
   const { user, logout, isAuthenticated } = useAuth();
-  const { isConnected, publicKey, balance, connectWallet, disconnectWallet, isConnecting } = useWallet();
+  const { isConnected, publicKey, balance, connectWallet, connectWalletManually, disconnectWallet, isConnecting, isManual, isAdmin } = useWallet();
+  const [showManualInput, setShowManualInput] = useState(false);
+  const [manualPublicKey, setManualPublicKey] = useState('');
+  const [selectedNetwork, setSelectedNetwork] = useState(STELLAR_CONFIG.CURRENT_NETWORK);
 
   const navigation = [
     { name: 'Events', href: '/events', icon: Ticket },
-    { name: 'My Tickets', href: '/my-tickets', icon: User },
-    ...(user?.isAdmin ? [{ name: 'Create Event', href: '/create-event', icon: Plus }] : []),
-    ...(user?.isAdmin ? [{ name: 'Check-in', href: '/check-in', icon: Scan }] : []),
+    { name: 'My Tickets', href: '/my-tickets', icon: Ticket, requiresAuth: true },
+    { name: 'Admin', href: '/admin', icon: User, requiresAuth: true, requiresAdmin: true },
   ];
 
   const isActive = (path: string) => location.pathname === path;
 
+  const availableNetworks = blockchainService.getAvailableNetworks();
+
   const handleConnectWallet = async () => {
-    try {
-      console.log('Connecting wallet...');
-      await connectWallet();
-      console.log('Wallet connected successfully');
-    } catch (error) {
-      console.error('Failed to connect wallet:', error);
-      alert(`Cüzdan bağlantısı başarısız: ${error instanceof Error ? error.message : 'Bilinmeyen hata'}`);
+    if (showManualInput && manualPublicKey.trim()) {
+      try {
+        await connectWalletManually(manualPublicKey.trim());
+        setShowManualInput(false);
+        setManualPublicKey('');
+      } catch (error) {
+        console.error('Manual connection failed:', error);
+        alert(`Manual connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    } else {
+      try {
+        await connectWallet();
+      } catch (error) {
+        console.error('Wallet connection failed:', error);
+        
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        
+        if (errorMessage.includes('Freighter wallet is not installed')) {
+          const choice = confirm(
+            'Freighter not detected.\n\n' +
+            'Options:\n' +
+            '1. Install/reload Freighter\n' +
+            '2. Enter public key manually\n\n' +
+            'OK = Go to Freighter download page\n' +
+            'Cancel = Manual public key entry'
+          );
+          
+          if (choice) {
+            window.open('https://www.freighter.app/', '_blank');
+          } else {
+            setShowManualInput(true);
+          }
+        } else {
+          alert(`Wallet connection failed: ${errorMessage}`);
+        }
+      }
+    }
+  };
+
+  const handleDisconnect = async () => {
+    await disconnectWallet();
+    await logout();
+  };
+
+  const handleNetworkChange = (network: string) => {
+    setSelectedNetwork(network);
+    blockchainService.setNetwork(network);
+    // Refresh wallet connection if connected
+    if (isConnected && publicKey) {
+      connectWalletManually(publicKey);
     }
   };
 
@@ -48,84 +97,129 @@ export const Header: React.FC = () => {
           {/* Navigation */}
           {isAuthenticated && (
             <nav className="hidden md:flex space-x-1">
-              {navigation.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <Link
-                    key={item.name}
-                    to={item.href}
-                    className={`flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                      isActive(item.href)
-                        ? 'bg-purple-100 text-purple-700'
-                        : 'text-gray-600 hover:text-purple-600 hover:bg-purple-50'
-                    }`}
-                  >
-                    <Icon className="w-4 h-4 mr-2" />
-                    {item.name}
-                  </Link>
-                );
-              })}
+              {navigation
+                .filter(item => {
+                  if (item.requiresAuth && !isAuthenticated) return false;
+                  if (item.requiresAdmin && !(user?.isAdmin || isAdmin)) return false;
+                  return true;
+                })
+                .map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <Link
+                      key={item.name}
+                      to={item.href}
+                      className={`flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                        isActive(item.href)
+                          ? 'bg-purple-100 text-purple-700'
+                          : 'text-gray-600 hover:text-purple-600 hover:bg-purple-50'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4 mr-2" />
+                      {item.name}
+                    </Link>
+                  );
+                })}
             </nav>
           )}
 
-          {/* User Actions */}
+          {/* Network Selection */}
           <div className="flex items-center space-x-4">
-            {isAuthenticated && (
-              <>
-                {/* Wallet Connection */}
-                {isConnected ? (
-                  <div className="hidden sm:flex items-center space-x-3">
-                    <div className="text-sm">
+            <select
+              value={selectedNetwork}
+              onChange={(e) => handleNetworkChange(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {availableNetworks.map((network) => (
+                <option key={network.key} value={network.key}>
+                  {network.name}
+                </option>
+              ))}
+            </select>
+
+            {/* User Actions */}
+            <div className="flex items-center space-x-4">
+              {isAuthenticated && (
+                <>
+                  {/* Wallet Connection */}
+                  {isConnected ? (
+                    <div className="hidden sm:flex items-center space-x-3">
+                      <div className="text-sm">
+                        <div className="font-medium text-gray-900">
+                          {formatPrice(balance)}
+                        </div>
+                        <div className="text-gray-500">
+                          {truncateAddress(publicKey || '')}
+                          {isManual && (
+                            <span className="ml-2 text-xs text-orange-600 bg-orange-100 px-2 py-1 rounded">
+                              Manuel
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleDisconnect}
+                      >
+                        Disconnect
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center space-x-2">
+                      {showManualInput ? (
+                        <input
+                          type="text"
+                          placeholder="Enter public key..."
+                          value={manualPublicKey}
+                          onChange={(e) => setManualPublicKey(e.target.value)}
+                          className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      ) : (
+                        <Button
+                          onClick={() => setShowManualInput(true)}
+                          variant="outline"
+                          size="sm"
+                        >
+                          Manual Connect
+                        </Button>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        icon={Wallet}
+                        onClick={handleConnectWallet}
+                        disabled={isConnecting || (showManualInput && !manualPublicKey.trim())}
+                      >
+                        {isConnecting ? 'Bağlanıyor...' : 'Connect Wallet'}
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* User Menu */}
+                  <div className="flex items-center space-x-3">
+                    <div className="hidden sm:block text-sm">
                       <div className="font-medium text-gray-900">
-                        {formatPrice(balance)}
+                        {user?.email}
                       </div>
-                      <div className="text-gray-500">
-                        {truncateAddress(publicKey || '')}
-                      </div>
+                      {(user?.isAdmin || isAdmin) && (
+                        <div className="text-purple-600 text-xs font-medium">
+                          Admin
+                        </div>
+                      )}
                     </div>
                     <Button
-                      variant="outline"
+                      variant="ghost"
                       size="sm"
-                      onClick={disconnectWallet}
+                      icon={LogOut}
+                      onClick={logout}
                     >
-                      Disconnect
+                      Logout
                     </Button>
                   </div>
-                ) : (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    icon={Wallet}
-                    onClick={handleConnectWallet}
-                    disabled={isConnecting}
-                  >
-                    {isConnecting ? 'Bağlanıyor...' : 'Connect Wallet'}
-                  </Button>
-                )}
-
-                {/* User Menu */}
-                <div className="flex items-center space-x-3">
-                  <div className="hidden sm:block text-sm">
-                    <div className="font-medium text-gray-900">
-                      {user?.email}
-                    </div>
-                    {user?.isAdmin && (
-                      <div className="text-purple-600 text-xs font-medium">
-                        Admin
-                      </div>
-                    )}
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    icon={LogOut}
-                    onClick={logout}
-                  >
-                    Logout
-                  </Button>
-                </div>
-              </>
-            )}
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>

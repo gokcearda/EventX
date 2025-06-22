@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Calendar, MapPin, DollarSign, Users, Image, FileText } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Input, Textarea, Select } from '../ui/Input';
 import { Card, CardHeader, CardContent } from '../ui/Card';
@@ -9,9 +8,10 @@ import { EVENT_CATEGORIES } from '../../utils/constants';
 interface EventFormProps {
   onSubmit: (eventData: CreateEventParams) => Promise<void>;
   loading?: boolean;
+  disabled?: boolean;
 }
 
-export const EventForm: React.FC<EventFormProps> = ({ onSubmit, loading = false }) => {
+export const EventForm: React.FC<EventFormProps> = ({ onSubmit, loading = false, disabled = false }) => {
   const [formData, setFormData] = useState<CreateEventParams>({
     title: '',
     description: '',
@@ -24,7 +24,7 @@ export const EventForm: React.FC<EventFormProps> = ({ onSubmit, loading = false 
     category: EVENT_CATEGORIES[0]
   });
 
-  const [errors, setErrors] = useState<Partial<CreateEventParams>>({});
+  const [errors, setErrors] = useState<Partial<Record<string, string>>>({});
 
   const handleChange = (field: keyof CreateEventParams, value: string | number) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -34,7 +34,7 @@ export const EventForm: React.FC<EventFormProps> = ({ onSubmit, loading = false 
   };
 
   const validateForm = (): boolean => {
-    const newErrors: Partial<CreateEventParams> = {};
+    const newErrors: Partial<Record<string, string>> = {};
 
     if (!formData.title.trim()) newErrors.title = 'Title is required';
     if (!formData.description.trim()) newErrors.description = 'Description is required';
@@ -157,7 +157,7 @@ export const EventForm: React.FC<EventFormProps> = ({ onSubmit, loading = false 
                 type="number"
                 label="Ticket Price (XLM)"
                 placeholder="0.00"
-                value={formData.ticketPrice}
+                value={formData.ticketPrice.toString()}
                 onChange={(e) => handleChange('ticketPrice', parseFloat(e.target.value) || 0)}
                 error={errors.ticketPrice}
                 step="0.01"
@@ -170,7 +170,7 @@ export const EventForm: React.FC<EventFormProps> = ({ onSubmit, loading = false 
                 type="number"
                 label="Total Tickets"
                 placeholder="100"
-                value={formData.totalTickets}
+                value={formData.totalTickets.toString()}
                 onChange={(e) => handleChange('totalTickets', parseInt(e.target.value) || 0)}
                 error={errors.totalTickets}
                 min="1"
@@ -221,6 +221,7 @@ export const EventForm: React.FC<EventFormProps> = ({ onSubmit, loading = false 
               loading={loading}
               size="lg"
               className="min-w-[200px]"
+              disabled={disabled}
             >
               Create Event
             </Button>

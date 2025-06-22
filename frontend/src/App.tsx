@@ -14,8 +14,8 @@ import { AdminPage } from './pages/AdminPage';
 
 function App() {
   return (
-    <AuthProvider>
-      <WalletProvider>
+    <WalletProvider>
+      <AuthProvider>
         <Router>
           <Layout>
             <Routes>
@@ -40,7 +40,7 @@ function App() {
               <Route 
                 path="/create-event" 
                 element={
-                  <ProtectedRoute adminOnly>
+                  <ProtectedRoute>
                     <CreateEventPage />
                   </ProtectedRoute>
                 } 
@@ -65,8 +65,8 @@ function App() {
             </Routes>
           </Layout>
         </Router>
-      </WalletProvider>
-    </AuthProvider>
+      </AuthProvider>
+    </WalletProvider>
   );
 }
 

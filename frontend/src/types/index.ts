@@ -1,7 +1,7 @@
 export interface User {
   id: string;
   email: string;
-  publicKey: string;
+  publicKey: string | null;
   isAdmin: boolean;
   createdAt: string;
 }
@@ -41,6 +41,9 @@ export interface WalletConnection {
   isConnected: boolean;
   publicKey: string | null;
   balance: number;
+  error?: string;
+  isManual?: boolean;
+  isAdmin?: boolean;
 }
 
 export interface PurchaseTicketParams {
