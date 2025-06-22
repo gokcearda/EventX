@@ -61,7 +61,7 @@ Before you begin, ensure you have the following installed:
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/yourusername/eventx.git
+git clone https://github.com/gokcearda/eventx.git
 cd eventx
 ```
 
@@ -270,7 +270,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Documentation**: [Wiki](https://github.com/yourusername/eventx/wiki)
 - **Issues**: [GitHub Issues](https://github.com/yourusername/eventx/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/yourusername/eventx/discussions)
-- **Email**: support@eventx.com
+- **Email**: ardagokceg@gmail.com
 
 ---
 
