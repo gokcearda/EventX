@@ -54,7 +54,11 @@ export const PurchaseTicketModal: React.FC<PurchaseTicketModalProps> = ({
       await ticketAPI.purchaseTickets({
         eventId: event.id,
         quantity,
-        totalPrice
+        totalPrice,
+        ticketPrice: event.ticketPrice,
+        eventTitle: event.title,
+        eventDate: event.date,
+        eventVenue: event.venue
       });
 
       onSuccess();

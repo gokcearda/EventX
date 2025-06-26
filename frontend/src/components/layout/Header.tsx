@@ -24,7 +24,14 @@ export const Header: React.FC = () => {
 
   const isActive = (path: string) => location.pathname === path;
 
-  const availableNetworks = blockchainService.getAvailableNetworks();
+  // Get available networks from constants
+  const availableNetworks = Object.entries(STELLAR_CONFIG.NETWORKS).map(([key, network]) => ({
+    key,
+    name: network.name,
+    horizonUrl: network.horizonUrl,
+    sorobanRpcUrl: network.sorobanRpcUrl,
+    networkPassphrase: network.networkPassphrase
+  }));
 
   const handleConnectWallet = async () => {
     if (showManualInput && manualPublicKey.trim()) {

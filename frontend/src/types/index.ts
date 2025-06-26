@@ -26,14 +26,21 @@ export interface Event {
 export interface Ticket {
   id: string;
   eventId: string;
+  eventTitle?: string;
+  eventDate?: string;
+  eventVenue?: string;
   ownerId: string;
+  ownerAddress?: string;
   tokenId: string;
   qrCode: string;
   isUsed: boolean;
   purchaseDate: string;
   price: number;
+  ticketPrice?: number;
   isForSale: boolean;
   resalePrice?: number;
+  status?: 'valid' | 'used' | 'cancelled';
+  transactionHash?: string;
   event?: Event;
 }
 
@@ -50,6 +57,10 @@ export interface PurchaseTicketParams {
   eventId: string;
   quantity: number;
   totalPrice: number;
+  ticketPrice?: number;
+  eventTitle?: string;
+  eventDate?: string;
+  eventVenue?: string;
 }
 
 export interface CreateEventParams {
